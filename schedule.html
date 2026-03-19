@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Errand Planner – Schedule</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a href="index.html" class="logo">Errand Planner</a>
+      <p class="tagline">Your week at a glance</p>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <div class="content-wrapper">
+      <section class="card section">
+        <h2 class="section-title">Weekly schedule</h2>
+        <p id="windowSummary" class="input-hint"></p>
+      </section>
+
+      <section id="scheduleRoot"></section>
+    </div>
+  </main>
+
+  <script>
+    function parseIsoToLocal(iso) {
+      try {
+        return new Date(iso);
+      } catch {
+        return null;
+      }
+    }
+
+    function pad(n) {
+      return String(n).padStart(2, '0');
+    }
+
+    function formatTime(dt) {
+      let h = dt.getHours();
+      const m = pad(dt.getMinutes());
+      const suffix = h >= 12 ? 'PM' : 'AM';
+      h = h % 12;
+      if (h === 0) h = 12;
+      return `${h}:${m} ${suffix}`;
+    }
+
+    function formatDateLabel(dt) {
+      const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+      return dt.toLocaleDateString(undefined, opts);
+    }
+
+    function buildSchedule() {
+      const raw = localStorage.getItem('scheduleData');
+      if (!raw) {
+        document.getElementById('scheduleRoot').innerHTML = '<div class="card"><p>No schedule data found. Please generate a schedule first.</p></div>';
+        return;
+      }
+
+      const data = JSON.parse(raw);
+      const windowInfo = data.window || {};
+      const scheduled = data.scheduled_errands || [];
+      const events = data.events || [];
+
+      const startWin = parseIsoToLocal(windowInfo.start_date);
+      const endWin = parseIsoToLocal(windowInfo.end_date);
+
+      const windowSummary = document.getElementById('windowSummary');
+      if (startWin && endWin) {
+        windowSummary.textContent = `Showing from ${startWin.toLocaleString()} to ${endWin.toLocaleString()}.`;
+      } else {
+        windowSummary.textContent = '';
+      }
+
+      const byDay = {};
+
+      function addItem(dateKey, item) {
+        if (!byDay[dateKey]) byDay[dateKey] = [];
+        byDay[dateKey].push(item);
+      }
+
+      scheduled.forEach(s => {
+        const start = parseIsoToLocal(s.start_time);
+        const end = parseIsoToLocal(s.end_time);
+        if (!start || !end) return;
+        const key = start.toISOString().slice(0, 10);
+        addItem(key, {
+          type: 'errand',
+          name: s.name,
+          address: s.address,
+          start,
+          end
+        });
+      });
+
+      events.forEach(ev => {
+        const startObj = ev.start || {};
+        const endObj = ev.end || {};
+        const startIso = startObj.dateTime || startObj.date;
+        const endIso = endObj.dateTime || endObj.date;
+        if (!startIso || !endIso) return;
+
+        const start = parseIsoToLocal(startIso);
+        const end = parseIsoToLocal(endIso);
+        if (!start || !end) return;
+
+        const key = start.toISOString().slice(0, 10);
+        addItem(key, {
+          type: 'event',
+          name: ev.summary || '(Busy)',
+          start,
+          end
+        });
+      });
+
+      const keys = Object.keys(byDay).sort();
+      const root = document.getElementById('scheduleRoot');
+
+      if (keys.length === 0) {
+        root.innerHTML = '<div class="card"><p>No errands or events in this window.</p></div>';
+        return;
+      }
+
+      root.innerHTML = keys.map(dateKey => {
+        const dayItems = byDay[dateKey].sort((a, b) => a.start - b.start);
+        const dayDate = parseIsoToLocal(dateKey + 'T00:00:00');
+        const label = dayDate ? formatDateLabel(dayDate) : dateKey;
+
+        const itemsHtml = dayItems.map(item => {
+          const time = `${formatTime(item.start)} – ${formatTime(item.end)}`;
+          const kindLabel = item.type === 'errand' ? 'Errand' : 'Calendar';
+          const badgeClass = item.type === 'errand' ? 'badge-errand' : 'badge-event';
+          const secondary = item.type === 'errand' && item.address ? `<div class="schedule-item-secondary">${item.address}</div>` : '';
+
+          return `
+            <div class="schedule-item">
+              <div class="schedule-item-time">${time}</div>
+              <div class="schedule-item-main">
+                <span class="schedule-item-badge ${badgeClass}">${kindLabel}</span>
+                <span class="schedule-item-title">${item.name}</span>
+                ${secondary}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        return `
+          <section class="card section">
+            <h3 class="schedule-day-title">${label}</h3>
+            <div class="schedule-day-items">
+              ${itemsHtml}
+            </div>
+          </section>
+        `;
+      }).join('');
+    }
+
+    document.addEventListener('DOMContentLoaded', buildSchedule);
+  </script>
+</body>
+
+</html>
+

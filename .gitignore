@@ -1,0 +1,19 @@
+### Local env / secrets
+.env
+.env.*
+
+# OAuth / API token files
+token.json
+credentials.json
+
+### Python
+__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+.venv/
+
+### Cursor
+.cursor/
+
